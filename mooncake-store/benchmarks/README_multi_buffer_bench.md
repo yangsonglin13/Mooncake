@@ -30,9 +30,21 @@ pip install numpy
 
 ### 基本用法（TCP）
 
+**使用 P2PHANDSHAKE（推荐，无需外部 metadata 服务器）：**
+
 ```bash
 python mooncake-store/benchmarks/multi_buffer_bench.py \
-  --metadata-server 127.0.0.1:50051 \
+  --metadata-server P2PHANDSHAKE \
+  --local-hostname 127.0.0.1:50052 \
+  --protocol tcp \
+  --operation both
+```
+
+**使用外部 metadata 服务器：**
+
+```bash
+python mooncake-store/benchmarks/multi_buffer_bench.py \
+  --metadata-server http://127.0.0.1:50051 \
   --local-hostname 127.0.0.1:50052 \
   --protocol tcp \
   --operation both
@@ -44,7 +56,7 @@ python mooncake-store/benchmarks/multi_buffer_bench.py \
 
 ```bash
 python mooncake-store/benchmarks/multi_buffer_bench.py \
-  --metadata-server 127.0.0.1:50051 \
+  --metadata-server P2PHANDSHAKE \
   --local-hostname 127.0.0.1:50052 \
   --protocol tcp \
   --operation put
@@ -54,7 +66,7 @@ python mooncake-store/benchmarks/multi_buffer_bench.py \
 
 ```bash
 python mooncake-store/benchmarks/multi_buffer_bench.py \
-  --metadata-server 127.0.0.1:50051 \
+  --metadata-server P2PHANDSHAKE \
   --local-hostname 127.0.0.1:50052 \
   --protocol tcp \
   --operation get
@@ -139,7 +151,11 @@ python mooncake-store/benchmarks/multi_buffer_bench.py \
 
 ## 参数说明
 
-- **`--metadata-server`**：Metadata 服务器地址，形如 `IP:PORT`，必填。
+- **`--metadata-server`**：Metadata 服务器地址，必填。支持以下格式：
+  - `P2PHANDSHAKE`：使用点对点握手模式，无需外部 metadata 服务器（推荐用于测试）
+  - `etcd://IP:PORT`：etcd 服务器
+  - `http://IP:PORT` 或 `https://IP:PORT`：HTTP metadata server
+  - `redis://IP:PORT`：Redis 服务器
 - **`--local-hostname`**：本机对外可见地址和端口，形如 `IP:PORT`，必填。
 - **`--protocol`**：传输协议，`tcp` / `rdma` / `ascend`，默认 `tcp`。
 - **`--rdma-devices`**：RDMA 设备名列表（逗号分隔），仅在 `protocol=rdma` 时需要。
@@ -210,3 +226,93 @@ Latency (per batch):
   - 可以通过查看 C++ 日志中的 `deviceLogicId` 字段确认实际使用的设备
 - **复制开关**：脚本内设置了 `MC_STORE_MEMCPY=0` 来禁止本地 memcpy 优化，尽量逼近真实网络传输性能。
 
+---
+
+## 故障排除
+
+### Metadata Server 连接失败
+
+**推荐解决方案：使用 P2PHANDSHAKE**
+
+如果遇到 metadata server 连接问题，最简单的方法是使用 `P2PHANDSHAKE` 模式，无需外部 metadata 服务器：
+
+```bash
+python multi_buffer_bench.py \
+  --metadata-server P2PHANDSHAKE \
+  --local-hostname 10.50.93.61:50055 \
+  --protocol ascend \
+  --operation both
+```
+
+**如果必须使用外部 metadata server：**
+
+如果遇到类似错误：
+```
+Unable to find metadata storage plugin etcd with conn string: 10.50.93.61:8088
+```
+
+**原因**：metadata server 连接字符串缺少协议前缀。
+
+**解决方法**：
+- 如果使用 etcd：使用 `etcd://10.50.93.61:2379` 格式
+- 如果使用 HTTP metadata server：使用 `http://10.50.93.61:8088` 格式
+- 如果使用 Redis：使用 `redis://10.50.93.61:6379` 格式
+
+示例：
+```bash
+python multi_buffer_bench.py \
+  --metadata-server http://10.50.93.61:8088 \
+  --local-hostname 10.50.93.61:50055 \
+  --protocol ascend \
+  --operation both
+```
+
+### 存储目录不存在
+
+如果遇到警告：
+```
+Root directory does not exist: /vllm-workspace/mc_storage
+Failed to initialize storage backend
+```
+
+**说明**：这是警告信息，不会影响 benchmark 运行。存储后端用于数据持久化，benchmark 测试通常不需要持久化存储。
+
+**解决方法**（如果需要持久化）：
+1. 创建存储目录：`mkdir -p /vllm-workspace/mc_storage`
+2. 或者通过 master server 配置正确的存储路径
+
+### Metadata Server 连接超时
+
+如果遇到连接超时错误：
+```
+PUT https://10.50.93.61:8088?key=... curl: Timeout was reached
+Connection timeout after 1501 ms
+Failed to initialize transfer engine
+```
+
+**可能的原因和解决方法**：
+
+1. **Metadata server 未运行或不可访问**：
+   - 检查 metadata server 是否正在运行：`curl http://10.50.93.61:8088`
+   - 确认网络连通性：`ping 10.50.93.61`
+
+2. **防火墙或网络策略阻止连接**：
+   - 检查防火墙规则
+   - 确认端口是否开放
+
+3. **Metadata server 地址或端口错误**：
+   - 确认 metadata server 的实际地址和端口
+   - 检查是否使用了正确的协议前缀（`http://`、`https://`、`etcd://` 等）
+
+4. **超时时间过短**：
+   - 某些网络环境下可能需要更长的超时时间
+   - 检查环境变量或配置中的超时设置
+
+**验证步骤**：
+```bash
+# 测试 HTTP metadata server
+curl -v http://10.50.93.61:8088
+
+# 测试 etcd（如果使用）
+etcdctl --endpoints=http://10.50.93.61:2379 endpoint health
+```

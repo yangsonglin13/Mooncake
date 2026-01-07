@@ -232,6 +232,73 @@ class MultiBufferBenchmark:
         self.get_buffer_ptrs = None
         self.get_sizes = None
         self.keys = None
+        self._ascendcl = None
+        self._acl_host_ptrs = []
+
+    def _load_ascendcl(self):
+        if self._ascendcl is not None:
+            return self._ascendcl
+        for lib_name in ("libascendcl.so", "libascendcl.so.1", "libascendcl.so.0"):
+            try:
+                self._ascendcl = ctypes.CDLL(lib_name)
+                break
+            except OSError:
+                continue
+        if self._ascendcl is None:
+            return None
+        self._ascendcl.aclrtMallocHost.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_size_t,
+        ]
+        self._ascendcl.aclrtMallocHost.restype = ctypes.c_int
+        self._ascendcl.aclrtFreeHost.argtypes = [ctypes.c_void_p]
+        self._ascendcl.aclrtFreeHost.restype = ctypes.c_int
+        return self._ascendcl
+
+    def _alloc_ascend_host_buffer(self, size):
+        ascendcl = self._load_ascendcl()
+        if ascendcl is None:
+            return None, None
+        ptr = ctypes.c_void_p()
+        ret = ascendcl.aclrtMallocHost(ctypes.byref(ptr), ctypes.c_size_t(size))
+        if ret != 0 or not ptr.value:
+            logger.error("aclrtMallocHost failed, ret=%s", ret)
+            return None, None
+        buf_type = ctypes.c_uint8 * size
+        buf = buf_type.from_address(ptr.value)
+        arr = np.ctypeslib.as_array(buf)
+        self._acl_host_ptrs.append(ptr)
+        return arr, ptr.value
+
+    def _free_acl_host_buffers(self):
+        if not self._acl_host_ptrs:
+            return
+        ascendcl = self._load_ascendcl()
+        if ascendcl is None:
+            logger.warning("ascendcl not available; skip aclrtFreeHost cleanup")
+            return
+        for ptr in self._acl_host_ptrs:
+            ret = ascendcl.aclrtFreeHost(ptr)
+            if ret != 0:
+                logger.warning("aclrtFreeHost failed for %s, ret=%s", ptr, ret)
+        self._acl_host_ptrs.clear()
+
+    def _allocate_buffer(self, size, fill_pattern=None):
+        if self.args.protocol == "ascend":
+            buffer, buffer_ptr = self._alloc_ascend_host_buffer(size)
+            if buffer is not None:
+                if fill_pattern is not None:
+                    buffer.fill(fill_pattern)
+                return buffer, buffer_ptr
+            logger.warning(
+                "Falling back to numpy buffer; Ascend register_buffer may fail "
+                "if aclrtMallocHost is unavailable."
+            )
+
+        buffer = np.zeros(size, dtype=np.uint8)
+        if fill_pattern is not None:
+            buffer.fill(fill_pattern)
+        return buffer, int(buffer.ctypes.data)
 
     def setup_store(self):
         """Initialize Mooncake Store."""
@@ -286,14 +353,11 @@ class MultiBufferBenchmark:
         
         for i in range(num_keys):
             # Allocate buffer for this key
-            buffer = np.zeros(value_size, dtype=np.uint8)
             # Fill with pattern data (different for each key)
-            pattern = (i % 256).astype(np.uint8)
-            buffer.fill(pattern)
+            pattern = np.uint8(i % 256)
+            buffer, buffer_ptr = self._allocate_buffer(value_size, pattern)
             
             self.put_buffers.append(buffer)
-            # Get buffer pointer as integer
-            buffer_ptr = int(buffer.ctypes.data)
             self.put_buffer_ptrs.append([buffer_ptr])
             self.put_sizes.append([value_size])
 
@@ -303,9 +367,8 @@ class MultiBufferBenchmark:
         self.get_sizes = []
         
         for i in range(num_keys):
-            buffer = np.zeros(value_size, dtype=np.uint8)
+            buffer, buffer_ptr = self._allocate_buffer(value_size)
             self.get_buffers.append(buffer)
-            buffer_ptr = int(buffer.ctypes.data)
             self.get_buffer_ptrs.append([buffer_ptr])
             self.get_sizes.append([value_size])
 
@@ -324,15 +387,31 @@ class MultiBufferBenchmark:
     def cleanup_buffers(self):
         """Unregister buffers."""
         if self.store is None:
+            self._free_acl_host_buffers()
+            return
+
+        # Check if buffers were initialized
+        if self.put_buffer_ptrs is None and self.get_buffer_ptrs is None:
+            self._free_acl_host_buffers()
             return
 
         logger.info("Unregistering buffers...")
-        all_ptrs = [ptrs[0] for ptrs in self.put_buffer_ptrs] + [ptrs[0] for ptrs in self.get_buffer_ptrs]
+        all_ptrs = []
+        
+        if self.put_buffer_ptrs is not None:
+            all_ptrs.extend([ptrs[0] for ptrs in self.put_buffer_ptrs])
+        
+        if self.get_buffer_ptrs is not None:
+            all_ptrs.extend([ptrs[0] for ptrs in self.get_buffer_ptrs])
         
         for ptr in all_ptrs:
-            self.store.unregister_buffer(ptr)
+            try:
+                self.store.unregister_buffer(ptr)
+            except Exception as e:
+                logger.warning(f"Failed to unregister buffer at {ptr}: {e}")
 
         logger.info("Buffers unregistered")
+        self._free_acl_host_buffers()
 
     def run_put_benchmark(self) -> BenchmarkResult:
         """Run PUT benchmark."""
