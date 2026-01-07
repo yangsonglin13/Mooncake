@@ -169,6 +169,9 @@ python mooncake-store/benchmarks/multi_buffer_bench.py \
 - **`--rounds`**：测试轮数，默认 `100`。
 - **`--warmup-rounds`**：预热轮数，默认 `10`。
 - **`--prefer-same-node`**：是否优先同节点分配内存。
+- **`--key-prefix`**：生成 key 的前缀，默认 `bench_key`。
+- **`--unique-keys`**：为 key 前缀追加 pid/时间戳，避免旧 key 冲突。
+- **`--ready-timeout-ms`**：GET 前等待副本就绪的时间（毫秒，0 表示不等待）。
 
 ---
 

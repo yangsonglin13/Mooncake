@@ -234,6 +234,10 @@ class MultiBufferBenchmark:
         self.keys = None
         self._ascendcl = None
         self._acl_host_ptrs = []
+        self.key_prefix = args.key_prefix
+        if args.unique_keys:
+            self.key_prefix = f"{self.key_prefix}_{os.getpid()}_{int(time.time() * 1000)}"
+            logger.info("Using key prefix: %s", self.key_prefix)
 
     def _load_ascendcl(self):
         if self._ascendcl is not None:
@@ -300,6 +304,25 @@ class MultiBufferBenchmark:
             buffer.fill(fill_pattern)
         return buffer, int(buffer.ctypes.data)
 
+    def _wait_for_keys_ready(self):
+        timeout_ms = self.args.ready_timeout_ms
+        if timeout_ms <= 0:
+            return True
+        deadline = time.time() + (timeout_ms / 1000.0)
+        last_sizes = None
+        while True:
+            last_sizes = [self.store.get_size(key) for key in self.keys]
+            if all(size >= 0 for size in last_sizes):
+                return True
+            if time.time() >= deadline:
+                logger.error(
+                    "Keys not ready after %d ms. Last sizes: %s",
+                    timeout_ms,
+                    last_sizes,
+                )
+                return False
+            time.sleep(0.05)
+
     def setup_store(self):
         """Initialize Mooncake Store."""
         logger.info("Initializing Mooncake Store...")
@@ -344,7 +367,7 @@ class MultiBufferBenchmark:
         value_size = self.args.value_size
 
         # Generate keys
-        self.keys = [f"bench_key_{i}" for i in range(num_keys)]
+        self.keys = [f"{self.key_prefix}_{i}" for i in range(num_keys)]
 
         # Allocate PUT buffers (source data)
         self.put_buffers = []
@@ -584,9 +607,16 @@ class MultiBufferBenchmark:
                     logger.info("Pre-populating data for GET benchmark...")
                     config = ReplicateConfig()
                     config.prefer_alloc_in_same_node = self.args.prefer_same_node
-                    self.store.batch_put_from_multi_buffers(
+                    return_codes = self.store.batch_put_from_multi_buffers(
                         self.keys, self.put_buffer_ptrs, self.put_sizes, config)
+                    failed = [code for code in return_codes if code != 0]
+                    if failed:
+                        logger.error("Pre-populate failed: %s", return_codes)
+                        sys.exit(1)
                     logger.info("Data pre-populated")
+
+                if not self._wait_for_keys_ready():
+                    sys.exit(1)
 
                 get_result = self.run_get_benchmark()
                 results.append(get_result)
@@ -660,6 +690,12 @@ Examples:
                        help='Number of warmup rounds (default: 10)')
     parser.add_argument('--prefer-same-node', action='store_true',
                        help='Prefer allocation in same node')
+    parser.add_argument('--key-prefix', type=str, default='bench_key',
+                       help='Prefix for generated keys (default: bench_key)')
+    parser.add_argument('--unique-keys', action='store_true',
+                       help='Append pid/timestamp to key prefix to avoid collisions')
+    parser.add_argument('--ready-timeout-ms', type=int, default=5000,
+                       help='Wait time for replicas to become ready before GET (0 to disable)')
 
     args = parser.parse_args()
 
