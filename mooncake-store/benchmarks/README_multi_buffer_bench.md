@@ -172,6 +172,8 @@ python mooncake-store/benchmarks/multi_buffer_bench.py \
 - **`--key-prefix`**：生成 key 的前缀，默认 `bench_key`。
 - **`--unique-keys`**：为 key 前缀追加 pid/时间戳，避免旧 key 冲突。
 - **`--ready-timeout-ms`**：GET 前等待副本就绪的时间（毫秒，0 表示不等待）。
+- **`--hold-after-run`**：测试结束后保持进程不退出，方便观察 master 日志。
+- **`--hold-seconds`**：保持时长（秒，0 表示等待 Ctrl+C）。
 
 ---
 

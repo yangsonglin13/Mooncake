@@ -323,6 +323,23 @@ class MultiBufferBenchmark:
                 return False
             time.sleep(0.05)
 
+    def _hold_after_run(self):
+        if not self.args.hold_after_run:
+            return
+        if self.store is None:
+            return
+        hold_seconds = self.args.hold_seconds
+        if hold_seconds > 0:
+            logger.info("Holding after run for %d seconds...", hold_seconds)
+            time.sleep(hold_seconds)
+            return
+        logger.info("Holding after run; press Ctrl+C to exit.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Exiting hold; cleaning up.")
+
     def setup_store(self):
         """Initialize Mooncake Store."""
         logger.info("Initializing Mooncake Store...")
@@ -625,6 +642,7 @@ class MultiBufferBenchmark:
             return results
 
         finally:
+            self._hold_after_run()
             self.cleanup_buffers()
 
 
@@ -696,6 +714,10 @@ Examples:
                        help='Append pid/timestamp to key prefix to avoid collisions')
     parser.add_argument('--ready-timeout-ms', type=int, default=5000,
                        help='Wait time for replicas to become ready before GET (0 to disable)')
+    parser.add_argument('--hold-after-run', action='store_true',
+                       help='Keep process alive after benchmark to inspect master logs')
+    parser.add_argument('--hold-seconds', type=int, default=0,
+                       help='Seconds to hold after run (0 waits for Ctrl+C)')
 
     args = parser.parse_args()
 
