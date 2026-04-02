@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mooncake vs Yuanrong 架构对比</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #f39c12, #e74c3c, #9b59b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        .comparison-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .system-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .system-title {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .mooncake-title {
+            border-color: #3498db;
+            color: #3498db;
+        }
+        .yuanrong-title {
+            border-color: #2ecc71;
+            color: #2ecc71;
+        }
+        .arch-diagram {
+            position: relative;
+            min-height: 500px;
+        }
+        .layer {
+            margin-bottom: 15px;
+            border-radius: 12px;
+            padding: 15px;
+            position: relative;
+        }
+        .layer-title {
+            font-size: 0.9em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+        .app-layer {
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+        }
+        .sdk-layer {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+        .cache-layer {
+            background: linear-gradient(135deg, #f39c12 0%, #d68910 100%);
+        }
+        .transfer-layer {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+        }
+        .memory-layer {
+            background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
+        }
+        .meta-layer {
+            background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+        }
+        .component {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin: 5px;
+            display: inline-block;
+            font-size: 0.85em;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .component.highlight {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            font-weight: bold;
+        }
+        .component.warning {
+            border-color: #e74c3c;
+            box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+        }
+        .component.success {
+            border-color: #2ecc71;
+            box-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
+        }
+        .flow-arrow {
+            text-align: center;
+            font-size: 1.5em;
+            color: rgba(255, 255, 255, 0.5);
+            margin: 5px 0;
+        }
+        .flow-arrow.down::before {
+            content: "▼";
+        }
+        .flow-arrow.up::before {
+            content: "▲";
+        }
+        .flow-arrow.bidirectional::before {
+            content: "⇅";
+        }
+        .master-box {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            margin: 10px auto;
+            max-width: 200px;
+            position: relative;
+        }
+        .master-box.bottleneck {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 5px rgba(231, 76, 60, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.8); }
+        }
+        .worker-box {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            margin: 10px;
+            display: inline-block;
+            min-width: 120px;
+        }
+        .etcd-box {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            margin: 10px auto;
+            max-width: 300px;
+        }
+        .shared-memory {
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .cache-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .cache-box {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .cache-box.local {
+            border: 2px dashed #f39c12;
+        }
+        .cache-box.global {
+            border: 2px solid #3498db;
+        }
+        .unified-pool {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+            border: 2px solid #2ecc71;
+        }
+        .annotation {
+            font-size: 0.75em;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 5px;
+        }
+        .cross-process {
+            position: absolute;
+            right: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            writing-mode: vertical-rl;
+            background: #e74c3c;
+            padding: 10px 5px;
+            border-radius: 5px;
+            font-size: 0.7em;
+        }
+        .shm-direct {
+            background: #2ecc71;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin: 5px;
+        }
+        .comparison-table {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            margin-top: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .comparison-table h2 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #f39c12;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        th {
+            background: rgba(255, 255, 255, 0.1);
+            font-weight: bold;
+        }
+        th:first-child {
+            border-radius: 10px 0 0 0;
+        }
+        th:last-child {
+            border-radius: 0 10px 0 0;
+        }
+        tr:last-child td:first-child {
+            border-radius: 0 0 0 10px;
+        }
+        tr:last-child td:last-child {
+            border-radius: 0 0 10px 0;
+        }
+        .advantage {
+            color: #2ecc71;
+        }
+        .disadvantage {
+            color: #e74c3c;
+        }
+        .neutral {
+            color: #f39c12;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .process-boundary {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 10px;
+            margin: 10px 0;
+            position: relative;
+        }
+        .process-label {
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            background: #1a1a2e;
+            padding: 0 10px;
+            font-size: 0.8em;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .inline-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .arrow-right::after {
+            content: "→";
+            margin: 0 5px;
+        }
+        .arrow-left::before {
+            content: "←";
+            margin: 0 5px;
+        }
+        .highlight-box {
+            background: rgba(46, 204, 113, 0.2);
+            border: 2px solid #2ecc71;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .warning-box {
+            background: rgba(231, 76, 60, 0.2);
+            border: 2px solid #e74c3c;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .feature-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin: 2px;
+        }
+        .tag-pro {
+            background: #2ecc71;
+            color: #fff;
+        }
+        .tag-con {
+            background: #e74c3c;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🥮 Mooncake vs Yuanrong 架构对比</h1>
+        <p class="subtitle">分布式 KVCache 存储系统架构设计对比分析</p>
+        
+        <div class="comparison-wrapper">
+            <!-- Mooncake Architecture -->
+            <div class="system-box">
+                <div class="system-title mooncake-title">
+                    <span>🥮</span> Mooncake Store
+                </div>
+                <div class="arch-diagram">
+                    <!-- Application Layer -->
+                    <div class="layer app-layer">
+                        <div class="layer-title">应用层 / Application</div>
+                        <div class="inline-diagram">
+                            <div class="component">vLLM</div>
+                            <div class="component">SGLang</div>
+                            <div class="component">LMCache</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow down"></div>
+                    
+                    <!-- SDK Layer -->
+                    <div class="layer sdk-layer">
+                        <div class="layer-title">客户端层 / Client SDK</div>
+                        <div class="process-boundary">
+                            <span class="process-label">Client 进程</span>
+                            <div class="inline-diagram">
+                                <div class="component">Client SDK</div>
+                                <div class="component">Transfer Engine</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow bidirectional"></div>
+                    
+                    <!-- Master Layer - Bottleneck -->
+                    <div class="warning-box">
+                        <div style="text-align: center; margin-bottom: 10px;">
+                            <strong>⚠️ 中心化 Master 瓶颈</strong>
+                        </div>
+                        <div class="master-box bottleneck">
+                            <strong>Master Service</strong>
+                            <div class="annotation">元数据集中管理</div>
+                            <div class="annotation">所有操作需跨进程访问</div>
+                        </div>
+                        <div style="text-align: center; margin-top: 10px;">
+                            <span class="feature-tag tag-con">单点瓶颈</span>
+                            <span class="feature-tag tag-con">跨进程 RPC</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow bidirectional"></div>
+                    
+                    <!-- Cache Layer - Split Design -->
+                    <div class="layer cache-layer">
+                        <div class="layer-title">缓存层 / Cache (分离设计)</div>
+                        <div class="cache-split">
+                            <div class="cache-box local">
+                                <strong>Hot Local Cache</strong>
+                                <div class="annotation">L1: GPU Memory</div>
+                                <div class="annotation">L2: CPU Memory</div>
+                                <div class="annotation">私有，快速访问</div>
+                            </div>
+                            <div class="cache-box global">
+                                <strong>Global Cache</strong>
+                                <div class="annotation">L3: 分布式存储</div>
+                                <div class="annotation">全局共享</div>
+                                <div class="annotation">需跨进程访问</div>
+                            </div>
+                        </div>
+                        <div style="text-align: center;">
+                            <span class="feature-tag tag-con">分离设计</span>
+                            <span class="feature-tag tag-con">层级复杂</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow down"></div>
+                    
+                    <!-- Transfer Layer -->
+                    <div class="layer transfer-layer">
+                        <div class="layer-title">传输层 / Transfer Engine</div>
+                        <div class="inline-diagram">
+                            <div class="component">TCP</div>
+                            <div class="component highlight">RDMA</div>
+                            <div class="component">NVMeoF</div>
+                            <div class="component">NVLink</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow down"></div>
+                    
+                    <!-- Metadata Storage -->
+                    <div class="layer meta-layer">
+                        <div class="layer-title">元数据存储 / Metadata</div>
+                        <div class="inline-diagram">
+                            <div class="component">etcd</div>
+                            <div class="component">Redis</div>
+                            <div class="component">HTTP</div>
+                        </div>
+                        <div class="annotation" style="text-align: center; margin-top: 10px;">
+                            Master 通过 etcd 实现高可用，但仍是集中式管理
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Yuanrong Architecture -->
+            <div class="system-box">
+                <div class="system-title yuanrong-title">
+                    <span>🚀</span> Yuanrong DataSystem
+                </div>
+                <div class="arch-diagram">
+                    <!-- Application Layer -->
+                    <div class="layer app-layer">
+                        <div class="layer-title">应用层 / Application</div>
+                        <div class="inline-diagram">
+                            <div class="component">LLM 训练</div>
+                            <div class="component">LLM 推理</div>
+                            <div class="component">大数据</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow down"></div>
+                    
+                    <!-- SDK Layer with Direct SHM Access -->
+                    <div class="layer sdk-layer">
+                        <div class="layer-title">客户端层 / Client SDK</div>
+                        <div class="process-boundary">
+                            <span class="process-label">用户进程</span>
+                            <div class="inline-diagram">
+                                <div class="component">KVClient</div>
+                                <div class="component">ObjectClient</div>
+                                <div class="component">HeteroClient</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow bidirectional"></div>
+                    
+                    <!-- Distributed Metadata - No Bottleneck -->
+                    <div class="highlight-box">
+                        <div style="text-align: center; margin-bottom: 10px;">
+                            <strong>✅ 分布式元数据 - 无中心瓶颈</strong>
+                        </div>
+                        <div class="etcd-box">
+                            <strong>一致性哈希环</strong>
+                            <div class="annotation">每个 Worker 本地缓存</div>
+                            <div class="annotation">ETCD 仅做协调</div>
+                        </div>
+                        <div class="inline-diagram" style="margin-top: 10px;">
+                            <div class="worker-box">Worker 0<br><span class="annotation">本地哈希环</span></div>
+                            <div class="worker-box">Worker 1<br><span class="annotation">本地哈希环</span></div>
+                            <div class="worker-box">Worker N<br><span class="annotation">本地哈希环</span></div>
+                        </div>
+                        <div style="text-align: center; margin-top: 10px;">
+                            <span class="feature-tag tag-pro">去中心化</span>
+                            <span class="feature-tag tag-pro">线性扩展</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow bidirectional"></div>
+                    
+                    <!-- Unified Memory Pool -->
+                    <div class="layer memory-layer">
+                        <div class="layer-title">统一内存池 / Unified Memory Pool</div>
+                        <div class="unified-pool">
+                            <strong>ArenaManager + Jemalloc</strong>
+                            <div class="cache-split" style="margin-top: 10px;">
+                                <div class="cache-box" style="border: 2px solid #2ecc71;">
+                                    <strong>HBM (NPU)</strong>
+                                    <div class="annotation">异构计算</div>
+                                </div>
+                                <div class="cache-box" style="border: 2px solid #2ecc71;">
+                                    <strong>DRAM</strong>
+                                    <div class="annotation">主内存</div>
+                                </div>
+                                <div class="cache-box" style="border: 2px solid #2ecc71;">
+                                    <strong>SSD</strong>
+                                    <div class="annotation">持久化</div>
+                                </div>
+                            </div>
+                            <div style="text-align: center;">
+                                <span class="feature-tag tag-pro">统一管理</span>
+                                <span class="feature-tag tag-pro">多级缓存</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow down"></div>
+                    
+                    <!-- Shared Memory Direct Access -->
+                    <div class="highlight-box">
+                        <div style="text-align: center; margin-bottom: 10px;">
+                            <strong>✅ 共享内存直接读写</strong>
+                        </div>
+                        <div class="shared-memory">
+                            <strong>Shared Memory (mmap)</strong>
+                            <div class="annotation">SDK 直接访问共享内存指针</div>
+                            <div class="annotation">零拷贝数据读写</div>
+                            <div class="annotation">无需跨进程 RPC</div>
+                        </div>
+                        <div style="text-align: center; margin-top: 10px;">
+                            <span class="shm-direct">void* MutableData()</span>
+                            <span class="shm-direct">const void* ImmutableData()</span>
+                        </div>
+                        <div style="text-align: center; margin-top: 10px;">
+                            <span class="feature-tag tag-pro">零拷贝</span>
+                            <span class="feature-tag tag-pro">低延迟</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flow-arrow down"></div>
+                    
+                    <!-- Transfer Layer -->
+                    <div class="layer transfer-layer">
+                        <div class="layer-title">传输层 / Transport</div>
+                        <div class="inline-diagram">
+                            <div class="component">TCP</div>
+                            <div class="component highlight">RDMA/UCX</div>
+                            <div class="component">HCCS</div>
+                            <div class="component">HCCL</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Key Differences Visualization -->
+        <div class="comparison-table">
+            <h2>📊 核心差异对比</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>对比维度</th>
+                        <th>🥮 Mooncake</th>
+                        <th>🚀 Yuanrong</th>
+                        <th>优势分析</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>元数据管理</strong></td>
+                        <td>
+                            <span class="disadvantage">集中式 Master</span><br>
+                            <small>所有操作需访问 Master</small>
+                        </td>
+                        <td>
+                            <span class="advantage">分布式一致性哈希</span><br>
+                            <small>本地缓存哈希环，ETCD 协调</small>
+                        </td>
+                        <td>
+                            <span class="advantage">Yuanrong 优</span><br>
+                            <small>无中心瓶颈，线性扩展</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>数据访问方式</strong></td>
+                        <td>
+                            <span class="disadvantage">跨进程 RPC</span><br>
+                            <small>需通过 Master 获取元数据</small>
+                        </td>
+                        <td>
+                            <span class="advantage">共享内存直接读写</span><br>
+                            <small>mmap 零拷贝访问</small>
+                        </td>
+                        <td>
+                            <span class="advantage">Yuanrong 优</span><br>
+                            <small>更低延迟，更高吞吐</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>内存池设计</strong></td>
+                        <td>
+                            <span class="neutral">分离设计</span><br>
+                            <small>Hot Local Cache + Global Cache</small>
+                        </td>
+                        <td>
+                            <span class="advantage">统一内存池</span><br>
+                            <small>Arena + Jemalloc 统一管理</small>
+                        </td>
+                        <td>
+                            <span class="advantage">Yuanrong 优</span><br>
+                            <small>架构更简洁，管理更高效</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>扩展性</strong></td>
+                        <td>
+                            <span class="disadvantage">Master 是瓶颈</span><br>
+                            <small>大规模集群受限</small>
+                        </td>
+                        <td>
+                            <span class="advantage">线性扩展</span><br>
+                            <small>无中心节点限制</small>
+                        </td>
+                        <td>
+                            <span class="advantage">Yuanrong 优</span><br>
+                            <small>适合超大规模部署</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>硬件生态</strong></td>
+                        <td>
+                            <span class="advantage">NVIDIA GPU</span><br>
+                            <small>CUDA, GPUDirect RDMA</small>
+                        </td>
+                        <td>
+                            <span class="advantage">华为昇腾 NPU</span><br>
+                            <small>CANN, HCCS, HCCL</small>
+                        </td>
+                        <td>
+                            <span class="neutral">各有优势</span><br>
+                            <small>面向不同硬件生态</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>部署复杂度</strong></td>
+                        <td>
+                            <span class="disadvantage">需独立 Master</span><br>
+                            <small>Master HA 配置复杂</small>
+                        </td>
+                        <td>
+                            <span class="advantage">无 Master 架构</span><br>
+                            <small>仅需 ETCD 集群</small>
+                        </td>
+                        <td>
+                            <span class="advantage">Yuanrong 优</span><br>
+                            <small>部署运维更简单</small>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2ecc71;"></div>
+                <span>Yuanrong 优势</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e74c3c;"></div>
+                <span>潜在瓶颈/劣势</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f39c12;"></div>
+                <span>中性/各有特点</span>
+            </div>
+        </div>
+        
+        <!-- Summary -->
+        <div class="comparison-table" style="margin-top: 30px;">
+            <h2>🎯 总结</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="warning-box">
+                    <h3 style="color: #3498db; margin-bottom: 10px;">🥮 Mooncake 特点</h3>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin: 8px 0;">• <strong>集中式 Master</strong>：元数据管理集中，存在单点瓶颈</li>
+                        <li style="margin: 8px 0;">• <strong>分离缓存设计</strong>：Local Cache + Global Cache 分层</li>
+                        <li style="margin: 8px 0;">• <strong>跨进程访问</strong>：所有元数据操作需 RPC 通信</li>
+                        <li style="margin: 8px 0;">• <strong>NVIDIA 生态</strong>：成熟的 GPU 支持</li>
+                        <li style="margin: 8px 0;">• <strong>适合场景</strong>：中等规模 LLM 推理集群</li>
+                    </ul>
+                </div>
+                <div class="highlight-box">
+                    <h3 style="color: #2ecc71; margin-bottom: 10px;">🚀 Yuanrong 优势</h3>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin: 8px 0;">• <strong>分布式元数据</strong>：一致性哈希，无中心瓶颈</li>
+                        <li style="margin: 8px 0;">• <strong>统一内存池</strong>：Arena + Jemalloc 高效管理</li>
+                        <li style="margin: 8px 0;">• <strong>共享内存直读</strong>：零拷贝，无需跨进程 RPC</li>
+                        <li style="margin: 8px 0;">• <strong>线性扩展</strong>：适合超大规模部署</li>
+                        <li style="margin: 8px 0;">• <strong>适合场景</strong>：大规模训练/推理集群</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
